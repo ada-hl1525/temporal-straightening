@@ -50,6 +50,32 @@ Run an environment check:
 python generated_eval/00_check_env.py
 ```
 
+## Convert Videos To MP4
+
+The evaluation scripts expect `.mp4` files. If your generated videos are `.mov`,
+`.avi`, `.webm`, `.mkv`, `.m4v`, or `.gif`, convert them first with ffmpeg:
+
+```bash
+python generated_eval/05_convert_to_mp4.py \
+  --input_path raw_videos/bouncing.mov \
+  --output_path generated_videos/bouncing/001.mp4
+```
+
+For a folder:
+
+```bash
+python generated_eval/05_convert_to_mp4.py \
+  --input_path raw_videos \
+  --output_dir generated_videos \
+  --recursive
+```
+
+If `ffmpeg` is missing on Linux:
+
+```bash
+apt-get update && apt-get install -y ffmpeg
+```
+
 ## Single Video
 
 Recommended full pipeline:
@@ -156,4 +182,3 @@ frames and `D` is the DINOv2 embedding dimension.
 These are proxy metrics, not ground-truth physics labels. They are most useful
 for comparing videos generated under the same prompt class, model, embedding
 model, and frame sampling setting.
-

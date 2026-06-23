@@ -1,13 +1,28 @@
-# Generated Video Physical Consistency Evaluation MVP
+# Generated Video Evaluation
 
-This folder is intentionally independent from the original temporal-straightening
-training, planning, MuJoCo, and D4RL code.
+This module is a small, independent MVP for evaluating physical consistency in
+generated videos. It does not import or depend on the original repository's
+training, planning, MuJoCo, D4RL, or dm_control code.
 
-The MVP evaluates whether a generated video follows a smooth trajectory in visual
-embedding space. Physically inconsistent generations, such as teleportation,
-sudden disappearance, severe deformation, abrupt direction changes, or collision
-artifacts, often appear as large embedding steps, high second-order variation, or
-low straightness.
+## Purpose
+
+The goal is to turn a video into a frame-wise visual embedding trajectory and
+measure whether that trajectory is smooth and continuous. A physically plausible
+video should usually move through visual embedding space in a more coherent way.
+Artifacts such as teleportation, sudden disappearance, shape collapse, abrupt
+motion reversal, or collision mistakes can produce large jumps, high curvature,
+or low straightness.
+
+## Relation To Temporal Straightening
+
+The original temporal-straightening idea studies whether useful visual
+representations make temporal trajectories straighter for downstream control and
+planning. Here, the same intuition is used as an evaluation proxy for generated
+videos: if the generated sequence is physically consistent, its visual embedding
+trajectory should be relatively smooth and straight.
+
+This is not a full reproduction of the planning experiments. It is a standalone
+evaluation pipeline for generated video files.
 
 ## Install
 
@@ -17,69 +32,128 @@ From the repository root:
 python -m pip install -r generated_eval/requirements.txt
 ```
 
-If you only want the dependency-light baseline encoder, `torch` and `torchvision`
-are optional:
+Main dependencies:
+
+- `torch`
+- `torchvision`
+- `transformers`
+- `pillow`
+- `opencv-python`
+- `numpy`
+- `scikit-learn`
+- `matplotlib`
+- `pandas`
+
+Run an environment check:
 
 ```bash
-python -m pip install numpy opencv-python matplotlib scikit-learn
+python generated_eval/00_check_env.py
 ```
 
-## Run On One Video
+## Single Video
+
+Recommended full pipeline:
 
 ```bash
-python generated_eval/evaluate_videos.py \
-  --input /path/to/video.mp4 \
-  --output-dir generated_eval/outputs \
-  --encoder raw
+python generated_eval/run_single_video_eval.py \
+  --video_path generated_videos/test.mp4 \
+  --video_id test \
+  --output_root results \
+  --num_frames 16
 ```
 
-## Run On A Folder Of Videos
+The same pipeline can be run step by step:
 
 ```bash
-python generated_eval/evaluate_videos.py \
-  --input /path/to/videos \
-  --output-dir generated_eval/outputs \
-  --encoder raw
+python generated_eval/01_extract_frames.py \
+  --video_path generated_videos/test.mp4 \
+  --output_dir results/frames/test \
+  --num_frames 16 \
+  --size 224
+
+python generated_eval/02_extract_embeddings.py \
+  --frame_dir results/frames/test \
+  --output_path results/embeddings/test.npy \
+  --model_name facebook/dinov2-base
+
+python generated_eval/03_compute_metrics.py \
+  --embedding_path results/embeddings/test.npy \
+  --output_path results/metrics/test.json
+
+python generated_eval/04_plot_metrics.py \
+  --embedding_path results/embeddings/test.npy \
+  --metrics_path results/metrics/test.json \
+  --output_dir results/figures/test
 ```
 
-For stronger semantic embeddings, use ImageNet ResNet18 features:
+## Batch Evaluation
+
+For a directory like:
+
+```text
+generated_videos/
+  projectile/
+    001.mp4
+    002.mp4
+  collision/
+    001.mp4
+    002.mp4
+```
+
+run:
 
 ```bash
-python generated_eval/evaluate_videos.py \
-  --input /path/to/videos \
-  --output-dir generated_eval/outputs \
-  --encoder resnet18 \
-  --weights imagenet
+python generated_eval/run_batch_eval.py \
+  --video_root generated_videos \
+  --output_root results \
+  --num_frames 16
 ```
 
-`--weights imagenet` uses torchvision's cached weights if available and may
-download them if not. Use `--weights none` to avoid network access.
+The batch script recursively finds all `.mp4` files. The `scene_type` is the
+parent folder name, such as `projectile` or `collision`. If one video fails, the
+error is recorded in the CSV and the script continues with the next video.
 
-## Outputs
+## Output Structure
 
-For each video, the script writes:
+For `video_id=test`, outputs are:
 
-- `frames/frame_000000.jpg`, `frames/frame_000001.jpg`, ...
-- `embeddings.npy`, shape `[T, D]`
-- `metrics.json`
-- `plots/step_distance.png`
-- `plots/curvature.png`
-- `plots/pca_trajectory.png`
+```text
+results/
+  frames/
+    test/
+      frame_0000.png
+      frame_0001.png
+      ...
+  embeddings/
+    test.npy
+  metrics/
+    test.json
+  figures/
+    test/
+      step_distance.png
+      curvature.png
+      pca_trajectory.png
+  metrics_summary.csv
+```
 
-For folder input, it also writes:
+The embedding file has shape `[T, D]`, where `T` is the number of extracted
+frames and `D` is the DINOv2 embedding dimension.
 
-- `metrics_summary.csv`
+## Metrics
 
-## Metric Interpretation
+- `step_distances`: `||z_{t+1} - z_t||`. Large spikes can indicate sudden visual
+  changes or discontinuities.
+- `mean_step_distance`: average frame-to-frame embedding movement.
+- `max_step_distance`: largest frame-to-frame embedding movement.
+- `std_step_distance`: variability of frame-to-frame movement.
+- `curvature`: `1 - cosine_similarity(z_{t+1}-z_t, z_{t+2}-z_{t+1})`. Higher
+  values indicate sharper changes in trajectory direction.
+- `mean_curvature`: average direction change along the trajectory.
+- `max_curvature`: largest direction change along the trajectory.
+- `straightness`: `||z_T - z_1|| / sum_t ||z_{t+1} - z_t||`. Higher values mean
+  the trajectory is closer to a straight path in embedding space.
 
-- `straightness`: endpoint distance divided by total path length. Higher is
-  straighter and usually smoother.
-- `step_distance_mean`, `step_distance_max`, `step_distance_cv`: frame-to-frame
-  embedding motion. Large spikes can indicate discontinuities.
-- `second_diff_mean`, `second_diff_max`: acceleration-like embedding changes.
-  Higher values often indicate jerkiness.
-- `turn_angle_mean_deg`, `turn_angle_max_deg`: direction changes in embedding
-  trajectory. Large values suggest abrupt motion or identity changes.
-- `curvature_mean`, `curvature_max`: turn angle normalized by local step length.
-- `discontinuity_ratio_max_to_median`: max step divided by median step. Higher
-  values flag sudden jumps.
+These are proxy metrics, not ground-truth physics labels. They are most useful
+for comparing videos generated under the same prompt class, model, embedding
+model, and frame sampling setting.
+

@@ -90,6 +90,91 @@ def output_for_video(video_path: Path, input_root: Path, output_dir: Path) -> Pa
     return output_dir / relative
 
 
+def run_ffmpeg_command(label: str, command: list[str]) -> tuple[bool, str]:
+    print(f"[TRY] {label}")
+    result = subprocess.run(command, text=True, capture_output=True)
+    if result.returncode == 0:
+        return True, ""
+    message = result.stderr.strip() or result.stdout.strip() or "unknown ffmpeg error"
+    print(f"[WARN] {label} failed: {message.splitlines()[-1]}")
+    return False, message
+
+
+def base_ffmpeg_args(
+    ffmpeg: str,
+    input_path: Path,
+    overwrite: bool,
+    fps: float | None,
+) -> list[str]:
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y" if overwrite else "-n",
+        "-i",
+        str(input_path),
+    ]
+    if fps is not None:
+        if fps <= 0:
+            fail("--fps must be positive when provided")
+        command.extend(["-r", str(fps)])
+    return command
+
+
+def conversion_candidates(
+    ffmpeg: str,
+    input_path: Path,
+    output_path: Path,
+    overwrite: bool,
+    fps: float | None,
+    crf: int,
+) -> list[tuple[str, list[str]]]:
+    base = base_ffmpeg_args(ffmpeg, input_path, overwrite, fps)
+    return [
+        (
+            "H.264/libx264 high-quality transcode",
+            base
+            + [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                str(crf),
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-an",
+                str(output_path),
+            ],
+        ),
+        (
+            "basic MPEG-4 MP4 transcode",
+            base
+            + [
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "2",
+                "-an",
+                str(output_path),
+            ],
+        ),
+        (
+            "stream copy into MP4 container",
+            base
+            + [
+                "-c",
+                "copy",
+                "-an",
+                str(output_path),
+            ],
+        ),
+    ]
+
+
 def convert_video(
     ffmpeg: str,
     input_path: Path,
@@ -110,48 +195,23 @@ def convert_video(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = [
-        ffmpeg,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y" if overwrite else "-n",
-        "-i",
-        str(input_path),
-    ]
-    if fps is not None:
-        if fps <= 0:
-            fail("--fps must be positive when provided")
-        command.extend(["-r", str(fps)])
-
-    command.extend(
-        [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            str(crf),
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            "-an",
-            str(output_path),
-        ]
-    )
-
     print(f"[CONVERT] {input_path} -> {output_path}")
-    result = subprocess.run(command, text=True, capture_output=True)
-    if result.returncode != 0:
-        message = result.stderr.strip() or result.stdout.strip() or "unknown ffmpeg error"
-        fail(
-            f"ffmpeg failed for {input_path}.\n"
-            f"Check the input video codec/path and ffmpeg installation.\n"
-            f"ffmpeg error:\n{message}"
-        )
+    errors: list[str] = []
+    for label, command in conversion_candidates(
+        ffmpeg, input_path, output_path, overwrite, fps, crf
+    ):
+        ok, message = run_ffmpeg_command(label, command)
+        if ok:
+            print(f"[OK] Saved MP4: {output_path}")
+            return
+        errors.append(f"{label}:\n{message}")
 
-    print(f"[OK] Saved MP4: {output_path}")
+    fail(
+        f"All ffmpeg conversion attempts failed for {input_path}.\n"
+        f"Check the input video codec/path and ffmpeg installation.\n"
+        "Last errors:\n\n"
+        + "\n\n".join(errors)
+    )
 
 
 def main() -> None:
@@ -193,4 +253,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

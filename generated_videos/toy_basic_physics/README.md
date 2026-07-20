@@ -14,7 +14,13 @@ Small AI-generated video set for smoke-testing the generated video evaluation pi
 
 ## Evaluation
 
-From the repository root, run a single video:
+From the repository root, run all five videos:
+
+```bash
+python generated_eval/run_cloud_batch_eval.py --hf_endpoint https://hf-mirror.com
+```
+
+Run a single video:
 
 ```bash
 python generated_eval/run_cloud_single_eval.py
@@ -28,7 +34,7 @@ python generated_eval/run_cloud_single_eval.py \
   --video_id Pendulum001_baseline
 ```
 
-Or run all videos:
+The underlying batch command is:
 
 ```bash
 python generated_eval/run_batch_eval.py \

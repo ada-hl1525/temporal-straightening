@@ -14,7 +14,26 @@ Small AI-generated video set for smoke-testing the generated video evaluation pi
 
 ## Evaluation
 
-From the repository root, run all five videos:
+From the repository root, run all five videos through multiple encoders:
+
+```bash
+python generated_eval/run_cloud_multi_encoder_eval.py --hf_endpoint https://hf-mirror.com
+```
+
+By default this runs:
+
+- `dinov2_small` (`facebook/dinov2-small`)
+- `dinov2_base` (`facebook/dinov2-base`)
+
+Run only selected encoders:
+
+```bash
+python generated_eval/run_cloud_multi_encoder_eval.py \
+  --hf_endpoint https://hf-mirror.com \
+  --only dinov2_small
+```
+
+Run all five videos with the single baseline encoder only:
 
 ```bash
 python generated_eval/run_cloud_batch_eval.py --hf_endpoint https://hf-mirror.com

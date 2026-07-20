@@ -46,6 +46,20 @@ Run all five videos with the single baseline encoder only:
 python generated_eval/run_cloud_batch_eval.py --hf_endpoint https://hf-mirror.com
 ```
 
+Analyze and package the multi-encoder results:
+
+```bash
+python generated_eval/analyze_multi_encoder_results.py \
+  --results_root results/toy_basic_physics_multi_encoder \
+  --output_dir results/toy_basic_physics_multi_encoder_analysis
+```
+
+The final download package is written to:
+
+```text
+results/toy_basic_physics_multi_encoder_analysis/toy_multi_encoder_results_with_analysis.tar.gz
+```
+
 Run a single video:
 
 ```bash

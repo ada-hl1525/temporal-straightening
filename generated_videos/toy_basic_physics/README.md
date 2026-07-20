@@ -24,13 +24,20 @@ By default this runs:
 
 - `dinov2_small` (`facebook/dinov2-small`)
 - `dinov2_base` (`facebook/dinov2-base`)
+- `dinov2_large` (`facebook/dinov2-large`)
+- `clip_vit_base_patch32` (`openai/clip-vit-base-patch32`)
+- `clip_vit_large_patch14` (`openai/clip-vit-large-patch14`)
+- `siglip_base_patch16_224` (`google/siglip-base-patch16-224`)
+- `vit_base_imagenet21k` (`google/vit-base-patch16-224-in21k`)
+- `mae_base` (`facebook/vit-mae-base`)
+- `swin_base` (`microsoft/swin-base-patch4-window7-224`)
 
 Run only selected encoders:
 
 ```bash
 python generated_eval/run_cloud_multi_encoder_eval.py \
   --hf_endpoint https://hf-mirror.com \
-  --only dinov2_small
+  --only dinov2_large clip_vit_large_patch14 siglip_base_patch16_224
 ```
 
 Run all five videos with the single baseline encoder only:

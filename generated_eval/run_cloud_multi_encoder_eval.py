@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 # Edit this block on the cloud server.
@@ -40,11 +41,55 @@ ENCODER_RUNS = [
         "run_id": "dinov2_small",
         "model_name": "facebook/dinov2-small",
         "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
     },
     {
         "run_id": "dinov2_base",
         "model_name": "facebook/dinov2-base",
         "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
+    },
+    {
+        "run_id": "dinov2_large",
+        "model_name": "facebook/dinov2-large",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 8,
+    },
+    {
+        "run_id": "clip_vit_base_patch32",
+        "model_name": "openai/clip-vit-base-patch32",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
+    },
+    {
+        "run_id": "clip_vit_large_patch14",
+        "model_name": "openai/clip-vit-large-patch14",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 8,
+    },
+    {
+        "run_id": "siglip_base_patch16_224",
+        "model_name": "google/siglip-base-patch16-224",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
+    },
+    {
+        "run_id": "vit_base_imagenet21k",
+        "model_name": "google/vit-base-patch16-224-in21k",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
+    },
+    {
+        "run_id": "mae_base",
+        "model_name": "facebook/vit-mae-base",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
+    },
+    {
+        "run_id": "swin_base",
+        "model_name": "microsoft/swin-base-patch4-window7-224",
+        "embedding_script": "generated_eval/02_extract_embeddings.py",
+        "batch_size": 16,
     },
 ]
 
@@ -74,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def select_runs(run_ids: list[str] | None) -> list[dict[str, str]]:
+def select_runs(run_ids: list[str] | None) -> list[dict[str, Any]]:
     if not run_ids:
         return ENCODER_RUNS
     requested = set(run_ids)
@@ -85,7 +130,7 @@ def select_runs(run_ids: list[str] | None) -> list[dict[str, str]]:
     return selected
 
 
-def run_encoder(args: argparse.Namespace, run: dict[str, str], env: dict[str, str]) -> None:
+def run_encoder(args: argparse.Namespace, run: dict[str, Any], env: dict[str, str]) -> None:
     run_id = safe_id(run["run_id"])
     output_root = Path(args.output_root) / run_id
     command = [
@@ -102,13 +147,14 @@ def run_encoder(args: argparse.Namespace, run: dict[str, str], env: dict[str, st
         "--model_name",
         run["model_name"],
         "--batch_size",
-        str(args.batch_size),
+        str(run.get("batch_size", args.batch_size)),
     ]
 
     print("")
     print(f"=== Encoder: {run_id} ===")
     print(f"Model: {run['model_name']}")
     print(f"Embedding script: {run['embedding_script']}")
+    print(f"Batch size: {run.get('batch_size', args.batch_size)}")
     print(f"Output root: {output_root}")
     print(" ".join(command))
 

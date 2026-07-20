@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Extract DINOv2 embeddings for a directory of image frames."""
+"""Extract frame-wise visual embeddings for a directory of image frames."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from common import fail, list_frame_paths
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Extract frame-wise DINOv2 embeddings.")
+    parser = argparse.ArgumentParser(description="Extract frame-wise visual embeddings.")
     parser.add_argument("--frame_dir", type=Path, required=True, help="Directory of png/jpg frames.")
     parser.add_argument("--output_path", type=Path, required=True, help="Output .npy path.")
     parser.add_argument(
@@ -22,6 +22,35 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--batch_size", type=int, default=16, help="Inference batch size.")
     return parser.parse_args()
+
+
+def select_embedding(outputs):
+    """Return a [B, D] tensor from common Hugging Face vision model outputs."""
+    image_embeds = getattr(outputs, "image_embeds", None)
+    if image_embeds is not None:
+        return image_embeds
+
+    pooler_output = getattr(outputs, "pooler_output", None)
+    if pooler_output is not None:
+        return pooler_output
+
+    last_hidden_state = getattr(outputs, "last_hidden_state", None)
+    if last_hidden_state is not None:
+        if last_hidden_state.ndim == 2:
+            return last_hidden_state
+        if last_hidden_state.ndim == 3:
+            return last_hidden_state[:, 0, :]
+        if last_hidden_state.ndim == 4:
+            return last_hidden_state.flatten(2).mean(dim=2)
+
+    vision_output = getattr(outputs, "vision_model_output", None)
+    if vision_output is not None:
+        return select_embedding(vision_output)
+
+    fail(
+        "Model output has no supported embedding field. Expected one of "
+        "image_embeds, pooler_output, last_hidden_state, or vision_model_output."
+    )
 
 
 def main() -> None:
@@ -74,12 +103,7 @@ def main() -> None:
             inputs = processor(images=images, return_tensors="pt")
             inputs = {key: value.to(device) for key, value in inputs.items()}
             outputs = model(**inputs)
-            if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
-                embeddings = outputs.last_hidden_state[:, 0, :]
-            elif hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
-                embeddings = outputs.pooler_output
-            else:
-                fail("Model output has neither last_hidden_state nor pooler_output.")
+            embeddings = select_embedding(outputs)
 
             all_embeddings.append(embeddings.detach().cpu().numpy().astype(np.float32))
 
@@ -93,4 +117,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

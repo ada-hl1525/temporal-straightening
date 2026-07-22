@@ -53,6 +53,46 @@ def select_embedding(outputs):
     )
 
 
+def ensure_2d(embeddings):
+    """Convert model features to [B, D] if a model returns extra dimensions."""
+    if embeddings.ndim == 2:
+        return embeddings
+    if embeddings.ndim > 2:
+        return embeddings.flatten(start_dim=1)
+    fail(f"Expected embeddings with at least 2 dims, got shape {tuple(embeddings.shape)}")
+
+
+def extract_embeddings(model, inputs):
+    """Extract [B, D] embeddings from image inputs.
+
+    CLIP/SigLIP-style models expose get_image_features(), while DINOv2/ViT-style
+    models generally expose hidden states or pooler outputs through forward().
+    """
+    image_feature_error = None
+    if hasattr(model, "get_image_features"):
+        try:
+            return ensure_2d(model.get_image_features(**inputs))
+        except TypeError:
+            try:
+                return ensure_2d(model.get_image_features(pixel_values=inputs["pixel_values"]))
+            except Exception as exc:
+                image_feature_error = exc
+        except Exception as exc:
+            image_feature_error = exc
+
+    try:
+        outputs = model(**inputs)
+        return ensure_2d(select_embedding(outputs))
+    except Exception as exc:
+        if image_feature_error is not None:
+            fail(
+                "Failed to extract image features. "
+                f"get_image_features error: {image_feature_error}. "
+                f"generic forward error: {exc}"
+            )
+        fail(f"Failed to extract image features with generic forward: {exc}")
+
+
 def main() -> None:
     args = parse_args()
     if args.batch_size <= 0:
@@ -102,8 +142,7 @@ def main() -> None:
 
             inputs = processor(images=images, return_tensors="pt")
             inputs = {key: value.to(device) for key, value in inputs.items()}
-            outputs = model(**inputs)
-            embeddings = select_embedding(outputs)
+            embeddings = extract_embeddings(model, inputs)
 
             all_embeddings.append(embeddings.detach().cpu().numpy().astype(np.float32))
 

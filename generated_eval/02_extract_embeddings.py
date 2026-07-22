@@ -62,6 +62,13 @@ def ensure_2d(embeddings):
     fail(f"Expected embeddings with at least 2 dims, got shape {tuple(embeddings.shape)}")
 
 
+def as_embedding_tensor(value):
+    """Normalize tensor or HF model output objects into a [B, D] tensor."""
+    if hasattr(value, "ndim"):
+        return ensure_2d(value)
+    return ensure_2d(select_embedding(value))
+
+
 def extract_embeddings(model, inputs):
     """Extract [B, D] embeddings from image inputs.
 
@@ -71,10 +78,12 @@ def extract_embeddings(model, inputs):
     image_feature_error = None
     if hasattr(model, "get_image_features"):
         try:
-            return ensure_2d(model.get_image_features(**inputs))
+            return as_embedding_tensor(model.get_image_features(**inputs))
         except TypeError:
             try:
-                return ensure_2d(model.get_image_features(pixel_values=inputs["pixel_values"]))
+                return as_embedding_tensor(
+                    model.get_image_features(pixel_values=inputs["pixel_values"])
+                )
             except Exception as exc:
                 image_feature_error = exc
         except Exception as exc:

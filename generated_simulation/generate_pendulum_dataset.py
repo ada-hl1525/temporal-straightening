@@ -7,7 +7,7 @@ physically implausible pendulum motion.
 
 Cloud usage:
 
-    python -m pip install opencv-python numpy
+    python -m pip install imageio imageio-ffmpeg opencv-python-headless numpy
     python generated_simulation/generate_pendulum_dataset.py
 
 The output is written to:
@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Iterable
 
 import cv2
+import imageio.v2 as imageio
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -220,7 +221,7 @@ class PendulumRenderer:
         pivot_px = self.world_to_pixel(pivot)
         cv2.circle(frame, pivot_px, max(5, int(self.scale * 0.035)), (30, 30, 30), thickness=-1, lineType=cv2.LINE_AA)
 
-        bob_colours = [(20, 90, 235), (235, 68, 45)]
+        bob_colours = [(235, 90, 20), (45, 68, 235)]
         bob_radii = [0.085, 0.075]
         for index, point in enumerate(points):
             start_px = self.world_to_pixel(all_points[index])
@@ -253,15 +254,21 @@ def double_points(theta1: float, theta2: float, l1: float, l2: float) -> list[np
 
 
 def write_video(path: Path, frames: Iterable[np.ndarray], *, fps: int, width: int, height: int) -> None:
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(path), fourcc, fps, (width, height))
-    if not writer.isOpened():
-        raise RuntimeError(f"Could not open video writer for {path}")
-    try:
+    """Write RGB frames to a broadly playable H.264 MP4."""
+    del width, height
+    with imageio.get_writer(
+        str(path),
+        fps=fps,
+        codec="libx264",
+        macro_block_size=1,
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+    ) as writer:
         for frame in frames:
-            writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-    finally:
-        writer.release()
+            writer.append_data(frame)
+
+
+def write_preview(path: Path, frame: np.ndarray) -> None:
+    cv2.imwrite(str(path), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
 
 
 def video_specs(num_variants: int) -> list[VideoSpec]:
@@ -311,10 +318,10 @@ def render_spec(
                 wrong_type=spec.wrong_type,
             )
             states = sim["states"]
-            frames = (
+            frame_list = [
                 renderer.render(single_points(float(theta), float(sim["length"])))
                 for theta, _omega in states
-            )
+            ]
         elif spec.scene == "double_pendulum":
             sim = simulate_double_pendulum(
                 duration=duration,
@@ -324,12 +331,12 @@ def render_spec(
                 wrong_type=spec.wrong_type,
             )
             states = sim["states"]
-            frames = (
+            frame_list = [
                 renderer.render(
                     double_points(float(theta1), float(theta2), float(sim["length_1"]), float(sim["length_2"]))
                 )
                 for theta1, theta2, _omega1, _omega2 in states
-            )
+            ]
         else:
             raise ValueError(f"Unknown scene: {spec.scene}")
 
@@ -340,7 +347,8 @@ def render_spec(
         scene_dir = output_dir / spec.scene
         scene_dir.mkdir(parents=True, exist_ok=True)
         video_path = scene_dir / filename
-        write_video(video_path, frames, fps=fps, width=width, height=height)
+        write_video(video_path, frame_list, fps=fps, width=width, height=height)
+        write_preview(scene_dir / f"{video_id}_preview.png", frame_list[0])
 
         rel_path = video_path.relative_to(REPO_ROOT)
         return {

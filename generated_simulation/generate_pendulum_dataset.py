@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Generate controlled pendulum videos with PyBullet offscreen rendering.
+"""Generate controlled pendulum videos with a lightweight OpenCV renderer.
 
 This script creates a small simulation dataset for evaluating whether visual
 encoders produce different embedding trajectories for physically plausible and
@@ -7,7 +7,7 @@ physically implausible pendulum motion.
 
 Cloud usage:
 
-    python -m pip install pybullet opencv-python numpy
+    python -m pip install opencv-python numpy
     python generated_simulation/generate_pendulum_dataset.py
 
 The output is written to:
@@ -29,8 +29,6 @@ from typing import Iterable
 
 import cv2
 import numpy as np
-import pybullet as p
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "generated_videos" / "pybullet_pendulum"
@@ -46,14 +44,18 @@ class VideoSpec:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate PyBullet pendulum videos.")
+    parser = argparse.ArgumentParser(description="Generate controlled pendulum videos.")
     parser.add_argument("--output_dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--num_variants", type=int, default=4)
     parser.add_argument("--duration", type=float, default=5.0)
     parser.add_argument("--fps", type=int, default=24)
     parser.add_argument("--width", type=int, default=768)
     parser.add_argument("--height", type=int, default=432)
-    parser.add_argument("--render_debug", action="store_true", help="Show PyBullet GUI instead of DIRECT.")
+    parser.add_argument(
+        "--render_debug",
+        action="store_true",
+        help="Accepted for compatibility; rendering is OpenCV-only and headless.",
+    )
     return parser.parse_args()
 
 
@@ -61,23 +63,6 @@ def ensure_clean_output_dir(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for subdir in ["single_pendulum", "double_pendulum"]:
         (output_dir / subdir).mkdir(parents=True, exist_ok=True)
-
-
-def quaternion_from_z_axis(direction: np.ndarray) -> tuple[float, float, float, float]:
-    """Return quaternion rotating the local z-axis to the given direction."""
-    direction = direction / np.linalg.norm(direction)
-    z_axis = np.array([0.0, 0.0, 1.0])
-    dot = float(np.clip(np.dot(z_axis, direction), -1.0, 1.0))
-    if dot > 0.999999:
-        return (0.0, 0.0, 0.0, 1.0)
-    if dot < -0.999999:
-        return (1.0, 0.0, 0.0, 0.0)
-    axis = np.cross(z_axis, direction)
-    axis = axis / np.linalg.norm(axis)
-    angle = math.acos(dot)
-    half = angle * 0.5
-    quat = np.concatenate([axis * math.sin(half), [math.cos(half)]])
-    return tuple(float(v) for v in quat)
 
 
 def simulate_single_pendulum(
@@ -204,124 +189,55 @@ class PendulumRenderer:
     def __init__(self, *, width: int, height: int, gui: bool) -> None:
         self.width = width
         self.height = height
-        self.client = p.connect(p.GUI if gui else p.DIRECT)
-        p.resetSimulation(physicsClientId=self.client)
-        p.setGravity(0, 0, -9.81, physicsClientId=self.client)
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=self.client)
-        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 1, physicsClientId=self.client)
-        self.view = p.computeViewMatrix(
-            cameraEyePosition=[0.0, -4.4, 1.05],
-            cameraTargetPosition=[0.0, 0.0, 0.75],
-            cameraUpVector=[0.0, 0.0, 1.0],
-            physicsClientId=self.client,
-        )
-        self.projection = p.computeProjectionMatrixFOV(
-            fov=42.0,
-            aspect=float(width) / float(height),
-            nearVal=0.01,
-            farVal=20.0,
-            physicsClientId=self.client,
-        )
-        self._make_world()
+        self.scale = min(width / 3.2, height / 2.2)
+        self.origin = np.array([width * 0.5, height * 0.18], dtype=np.float64)
+        if gui:
+            print("render_debug was requested, but this renderer is OpenCV-only and headless.")
 
     def close(self) -> None:
-        p.disconnect(physicsClientId=self.client)
+        return None
 
-    def _make_world(self) -> None:
-        floor_visual = p.createVisualShape(
-            p.GEOM_BOX,
-            halfExtents=[2.4, 0.02, 0.015],
-            rgbaColor=[0.78, 0.78, 0.74, 1.0],
-            physicsClientId=self.client,
-        )
-        p.createMultiBody(
-            baseMass=0,
-            baseVisualShapeIndex=floor_visual,
-            basePosition=[0, 0.18, 0.0],
-            physicsClientId=self.client,
-        )
-        pivot_visual = p.createVisualShape(
-            p.GEOM_SPHERE,
-            radius=0.055,
-            rgbaColor=[0.08, 0.08, 0.08, 1.0],
-            physicsClientId=self.client,
-        )
-        self.pivot = p.createMultiBody(
-            baseMass=0,
-            baseVisualShapeIndex=pivot_visual,
-            basePosition=[0, 0, 1.62],
-            physicsClientId=self.client,
-        )
-        self.rod_visuals = [
-            p.createVisualShape(
-                p.GEOM_CYLINDER,
-                radius=0.018,
-                length=1.1,
-                rgbaColor=[0.12, 0.12, 0.12, 1.0],
-                physicsClientId=self.client,
-            ),
-            p.createVisualShape(
-                p.GEOM_CYLINDER,
-                radius=0.018,
-                length=0.82,
-                rgbaColor=[0.12, 0.12, 0.12, 1.0],
-                physicsClientId=self.client,
-            ),
-        ]
-        self.bob_visuals = [
-            p.createVisualShape(
-                p.GEOM_SPHERE,
-                radius=0.085,
-                rgbaColor=[0.05, 0.32, 0.95, 1.0],
-                physicsClientId=self.client,
-            ),
-            p.createVisualShape(
-                p.GEOM_SPHERE,
-                radius=0.075,
-                rgbaColor=[0.92, 0.2, 0.12, 1.0],
-                physicsClientId=self.client,
-            ),
-        ]
-        self.rods = [
-            p.createMultiBody(baseMass=0, baseVisualShapeIndex=self.rod_visuals[0], physicsClientId=self.client),
-            p.createMultiBody(baseMass=0, baseVisualShapeIndex=self.rod_visuals[1], physicsClientId=self.client),
-        ]
-        self.bobs = [
-            p.createMultiBody(baseMass=0, baseVisualShapeIndex=self.bob_visuals[0], physicsClientId=self.client),
-            p.createMultiBody(baseMass=0, baseVisualShapeIndex=self.bob_visuals[1], physicsClientId=self.client),
-        ]
+    def world_to_pixel(self, point: np.ndarray) -> tuple[int, int]:
+        x = self.origin[0] + point[0] * self.scale
+        y = self.origin[1] + (1.62 - point[2]) * self.scale
+        return int(round(x)), int(round(y))
+
+    def draw_background(self, frame: np.ndarray) -> None:
+        frame[:] = (248, 248, 245)
+        floor_y = int(round(self.origin[1] + 1.65 * self.scale))
+        cv2.rectangle(frame, (0, floor_y), (self.width, self.height), (225, 225, 218), thickness=-1)
+        for offset in np.linspace(-1.6, 1.6, 9):
+            x = int(round(self.origin[0] + offset * self.scale))
+            cv2.line(frame, (x, floor_y), (x + 55, self.height), (214, 214, 207), 1, cv2.LINE_AA)
+        cv2.line(frame, (0, floor_y), (self.width, floor_y), (190, 190, 184), 2, cv2.LINE_AA)
 
     def render(self, points: list[np.ndarray]) -> np.ndarray:
         pivot = np.array([0.0, 0.0, 1.62], dtype=np.float64)
         all_points = [pivot] + points
+        frame = np.empty((self.height, self.width, 3), dtype=np.uint8)
+        self.draw_background(frame)
 
-        for i, body in enumerate(self.rods):
-            if i < len(points):
-                start = all_points[i]
-                end = all_points[i + 1]
-                midpoint = (start + end) * 0.5
-                direction = end - start
-                quat = quaternion_from_z_axis(direction)
-                p.resetBasePositionAndOrientation(body, midpoint.tolist(), quat, physicsClientId=self.client)
-            else:
-                p.resetBasePositionAndOrientation(body, [0, 0, -10], [0, 0, 0, 1], physicsClientId=self.client)
+        pivot_px = self.world_to_pixel(pivot)
+        cv2.circle(frame, pivot_px, max(5, int(self.scale * 0.035)), (30, 30, 30), thickness=-1, lineType=cv2.LINE_AA)
 
-        for i, body in enumerate(self.bobs):
-            if i < len(points):
-                p.resetBasePositionAndOrientation(body, points[i].tolist(), [0, 0, 0, 1], physicsClientId=self.client)
-            else:
-                p.resetBasePositionAndOrientation(body, [0, 0, -10], [0, 0, 0, 1], physicsClientId=self.client)
+        bob_colours = [(20, 90, 235), (235, 68, 45)]
+        bob_radii = [0.085, 0.075]
+        for index, point in enumerate(points):
+            start_px = self.world_to_pixel(all_points[index])
+            end_px = self.world_to_pixel(point)
+            cv2.line(frame, start_px, end_px, (42, 42, 42), max(3, int(self.scale * 0.018)), cv2.LINE_AA)
 
-        _, _, rgba, _, _ = p.getCameraImage(
-            width=self.width,
-            height=self.height,
-            viewMatrix=self.view,
-            projectionMatrix=self.projection,
-            renderer=p.ER_TINY_RENDERER,
-            physicsClientId=self.client,
-        )
-        rgb = np.asarray(rgba, dtype=np.uint8).reshape(self.height, self.width, 4)[:, :, :3]
-        return rgb
+        for index, point in enumerate(points):
+            center = self.world_to_pixel(point)
+            radius = max(8, int(round(self.scale * bob_radii[min(index, len(bob_radii) - 1)])))
+            colour = bob_colours[min(index, len(bob_colours) - 1)]
+            shadow = (center[0] + max(2, radius // 5), center[1] + max(2, radius // 5))
+            cv2.circle(frame, shadow, radius, (178, 178, 172), thickness=-1, lineType=cv2.LINE_AA)
+            cv2.circle(frame, center, radius, colour, thickness=-1, lineType=cv2.LINE_AA)
+            highlight = (center[0] - max(2, radius // 3), center[1] - max(2, radius // 3))
+            cv2.circle(frame, highlight, max(2, radius // 4), (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
+
+        return frame
 
 
 def single_points(theta: float, length: float) -> list[np.ndarray]:
@@ -429,7 +345,7 @@ def render_spec(
         rel_path = video_path.relative_to(REPO_ROOT)
         return {
             "video_id": video_id,
-            "dataset": "pybullet_pendulum",
+            "dataset": "simulated_pendulum",
             "scene": spec.scene,
             "physics_label": spec.physics_label,
             "wrong_type": spec.wrong_type,
@@ -443,7 +359,7 @@ def render_spec(
             "gravity": sim["gravity"],
             "damping": sim["damping"],
             "initial_state": sim["initial_state"],
-            "notes": "procedural physics simulation rendered with PyBullet",
+            "notes": "procedural pendulum simulation rendered with OpenCV",
         }
     finally:
         renderer.close()
@@ -480,9 +396,9 @@ def write_readme(output_dir: Path) -> None:
     readme.write_text(
         "\n".join(
             [
-                "# PyBullet Pendulum Dataset",
+                "# Simulated Pendulum Dataset",
                 "",
-                "Controlled toy physics videos generated from pendulum equations and rendered with PyBullet.",
+                "Controlled toy physics videos generated from pendulum equations and rendered with OpenCV.",
                 "",
                 "Scenes:",
                 "",

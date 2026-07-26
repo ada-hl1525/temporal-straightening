@@ -1,2 +1,2 @@
-numpy
-opencv-python-headless
+numpy<2.3
+opencv-python-headless==4.12.0.88

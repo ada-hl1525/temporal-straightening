@@ -130,40 +130,77 @@ def collision_positions(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, str]]:
     rng = np.random.default_rng(seed)
     radius = int(round(width * 0.035))
-    y = float(height * rng.uniform(0.43, 0.55))
-    x1_0 = float(width * 0.18)
-    x2_0 = float(width * 0.82)
-    v1 = np.array([width * rng.uniform(0.70, 0.78) / frame_count, rng.uniform(-0.08, 0.08)], dtype=np.float64)
-    v2 = np.array([-width * rng.uniform(0.70, 0.78) / frame_count, rng.uniform(-0.08, 0.08)], dtype=np.float64)
-    p1 = np.array([x1_0, y], dtype=np.float64)
-    p2 = np.array([x2_0, y + rng.uniform(-8.0, 8.0)], dtype=np.float64)
+    floor_y = int(height * 0.72)
+    y = float(floor_y - radius)
+    x1_start = float(width * rng.uniform(0.13, 0.18))
+    x2_start = float(width * rng.uniform(0.82, 0.87))
     impact_frame = frame_count // 2
+    contact_midpoint = float(width * rng.uniform(0.48, 0.52))
+    x1_contact = contact_midpoint - radius
+    x2_contact = contact_midpoint + radius
+    post_span = width * rng.uniform(0.25, 0.34)
+
     p1s: list[np.ndarray] = []
     p2s: list[np.ndarray] = []
 
     for frame_idx in range(frame_count):
-        if frame_idx == impact_frame:
+        if frame_idx <= impact_frame:
+            alpha = frame_idx / max(1, impact_frame)
+            x1 = (1.0 - alpha) * x1_start + alpha * x1_contact
+            x2 = (1.0 - alpha) * x2_start + alpha * x2_contact
+            y1 = y
+            y2 = y
+        else:
+            beta = (frame_idx - impact_frame) / max(1, frame_count - 1 - impact_frame)
             if physics_label == "correct":
-                v1, v2 = v2.copy(), v1.copy()
+                x1 = x1_contact - post_span * beta
+                x2 = x2_contact + post_span * beta
+                y1 = y
+                y2 = y
             elif wrong_type == "collision_no_response":
-                pass
+                # Wrong but visually clean: the balls stop at contact instead
+                # of bouncing away. They remain tangent, never overlapping.
+                x1 = x1_contact
+                x2 = x2_contact
+                y1 = y
+                y2 = y
             elif wrong_type == "collision_wrong_direction":
-                v1 = np.array([-abs(v1[0]), -0.45], dtype=np.float64)
-                v2 = np.array([abs(v2[0]), 0.45], dtype=np.float64)
+                # Both balls move upward after contact, violating the expected
+                # horizontal bounce while staying separated.
+                x1 = x1_contact - post_span * 0.55 * beta
+                x2 = x2_contact + post_span * 0.55 * beta
+                lift = height * 0.18 * beta
+                y1 = y - lift
+                y2 = y - lift
             elif wrong_type == "collision_energy_gain":
-                v1, v2 = v2.copy() * 1.75, v1.copy() * 1.75
-
-        p1 = p1 + v1
-        p2 = p2 + v2
-        p1s.append(p1.copy())
-        p2s.append(p2.copy())
+                x1 = x1_contact - post_span * 1.55 * beta
+                x2 = x2_contact + post_span * 1.55 * beta
+                y1 = y
+                y2 = y
+            else:
+                x1 = x1_contact - post_span * beta
+                x2 = x2_contact + post_span * beta
+                y1 = y
+                y2 = y
+        p1s.append(np.array([x1, y1], dtype=np.float64))
+        p2s.append(np.array([x2, y2], dtype=np.float64))
 
     meta = {
         "event_frame": str(impact_frame),
         "event_description": "two balls meet and should exchange horizontal velocities",
         "object_radius": str(radius),
+        "minimum_center_distance": str(2 * radius),
     }
-    return np.asarray(p1s), np.asarray(p2s), meta
+    p1_array = np.asarray(p1s)
+    p2_array = np.asarray(p2s)
+    min_distance = float(np.min(np.linalg.norm(p2_array - p1_array, axis=1)))
+    if min_distance < (2 * radius - 1e-6):
+        raise RuntimeError(
+            f"collision trajectory overlaps: min center distance {min_distance:.3f}, "
+            f"required {2 * radius:.3f}"
+        )
+    meta["observed_min_center_distance"] = f"{min_distance:.3f}"
+    return p1_array, p2_array, meta
 
 
 def render_collision_video(
@@ -195,9 +232,6 @@ def render_collision_video(
         draw_motion_trace(frame, [p for p in p2s[max(0, idx - 10) : idx + 1]], (45, 68, 235))
         draw_ball(frame, p1s[idx], radius, (235, 90, 20))
         draw_ball(frame, p2s[idx], radius, (45, 68, 235))
-        if abs(idx - int(meta["event_frame"])) <= 1:
-            midpoint = np.round((p1s[idx] + p2s[idx]) / 2).astype(int)
-            cv2.circle(frame, tuple(midpoint), radius * 2, (245, 210, 60), 2, cv2.LINE_AA)
         frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     imageio.mimwrite(output_path, frames, fps=fps, codec="libx264", quality=8)
     return meta
@@ -335,6 +369,8 @@ def write_metadata(rows: list[dict[str, str]], output_dir: Path) -> None:
         "event_frame",
         "event_description",
         "object_radius",
+        "minimum_center_distance",
+        "observed_min_center_distance",
         "occluder",
         "enter_frame",
         "exit_frame",

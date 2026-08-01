@@ -151,6 +151,32 @@ The batch script writes:
 - a `README.md` index;
 - `feature_attention_examples.tar.gz` for downloading.
 
+## 4. Connect Results Back To The Project Plan
+
+After the quantitative and qualitative packages exist, run:
+
+```bash
+python generated_analysis/summarize_project_plan_results.py \
+  --sim_analysis_package results/simulated_pendulum_analysis.tar.gz \
+  --feature_attention_package results/feature_attention_examples.tar.gz \
+  --output_dir results/project_plan_alignment \
+  --latex_asset_dir reports/irp-template-main/latex/generated/simulated_pendulum
+```
+
+This produces:
+
+- `results/project_plan_alignment/project_plan_alignment_report.md`
+- `results/project_plan_alignment/tables/plan_deliverable_mapping.csv`
+- `results/project_plan_alignment/tables/qualitative_examples.csv`
+- `results/project_plan_alignment/figures/qualitative_case_montage.png`
+- `results/project_plan_alignment/project_plan_alignment.tex`
+- `results/project_plan_alignment/project_plan_alignment.tar.gz`
+
+It also refreshes the LaTeX assets under
+`reports/irp-template-main/latex/generated/simulated_pendulum` from the packaged
+results, so the report uses the latest tables and figures rather than stale
+local outputs.
+
 ## Report Logic
 
 Use the quantitative script for the main results:

@@ -106,20 +106,14 @@ To address this limitation, I generated a controlled simulated dataset with
 single- and double-pendulum videos. Each video has fixed visual style,
 resolution, frame rate, and duration. The dataset contains correct examples
 under normal gravity and damping, plus wrong examples where the dynamics are
-manually altered. The current set contains 16 videos:
-
-\begin{itemize}
-    \item four correct single-pendulum videos;
-    \item four wrong single-pendulum videos;
-    \item four correct double-pendulum videos;
-    \item four wrong double-pendulum videos.
-\end{itemize}
-
-The wrong-physics interventions include energy gain, gravity reversal after the
-middle of the video, and periodic velocity kicks. Unlike the AI-generated
-videos, these labels are controlled by construction. This makes the simulated
-dataset a better benchmark for testing whether the evaluation pipeline is
-stable and whether latent trajectories respond to physical inconsistency.
+manually altered. The current larger simulated set contains 48 videos: 12 correct single-pendulum
+videos, 12 wrong single-pendulum videos, 12 correct double-pendulum videos, and
+12 wrong double-pendulum videos. The wrong-physics interventions include energy
+gain, gravity reversal after the middle of the video, zero-gravity segments,
+overdamping, midpoint impulses, and periodic velocity kicks. Unlike the
+AI-generated videos, these labels are controlled by construction. This makes the
+simulated dataset a better benchmark for testing whether the evaluation pipeline
+is stable and whether latent trajectories respond to physical inconsistency.
 
 \section{Methods}
 \subsection{Latent Trajectory Extraction}
@@ -200,8 +194,8 @@ validation rather than the main evidence. The controlled simulated pendulum
 benchmark below is therefore used as the main experimental result.
 
 \subsection{Controlled Simulated Pendulum Evaluation}
-The simulated pendulum benchmark contains 16 videos and was evaluated with nine
-encoders, producing 144 successful evaluation rows. Tables
+The simulated pendulum benchmark contains 48 videos and was evaluated with nine
+encoders, producing 432 successful evaluation rows. Tables
 \ref{tab:sim-encoder-deltas}--\ref{tab:sim-scene-deltas} summarize the main
 quantitative results.
 
@@ -240,12 +234,12 @@ effect does not increase monotonically with model size. DINOv2-base gives the
 largest mean-step delta, while DINOv2-small gives the largest standard-deviation
 delta.
 
-CLIP-B/32 has the highest AUC for mean step distance in this benchmark
-($0.844$), outperforming CLIP-L/14 on this specific metric. This does not imply
-that the smaller CLIP model is generally better; it suggests that patch size,
-embedding scale, and training objective can affect sensitivity to simple
-geometric motion. SigLIP, Swin, and ViT also show positive step-distance deltas,
-but the separation is smaller. MAE-B does not provide a useful signal in this
+DINOv2-base has the highest AUC for mean step distance in this benchmark
+($0.802$), followed by CLIP-B/32 ($0.785$) and DINOv2-small ($0.769$). This
+suggests that self-supervised visual representations are particularly sensitive
+to the controlled pendulum perturbations, but the result is not simply a matter
+of model size. SigLIP, Swin, and ViT also show positive step-distance deltas,
+but the separation is smaller. MAE-B provides the weakest signal in this
 setting.
 
 \section{Discussion}
@@ -258,11 +252,11 @@ naturally loop or curve in representation space. Therefore, straightness alone
 is too crude as a physics-consistency metric.
 
 The encoder comparison also shows that the result is representation-dependent.
-DINOv2 gives the largest absolute step-distance changes, while CLIP-B/32 gives
-the strongest AUC for mean step distance. MAE performs poorly, suggesting that
-not all pretrained image encoders are equally useful for temporal physical
-diagnostics. A single universal score would hide these differences, so the
-report should present model-specific behaviour.
+DINOv2 gives the largest absolute step-distance changes and the strongest AUC
+for mean step distance in the current larger run. MAE performs poorly,
+suggesting that not all pretrained image encoders are equally useful for
+temporal physical diagnostics. A single universal score would hide these
+differences, so the report should present model-specific behaviour.
 
 The pairwise separation result makes the evidence stronger but also highlights
 the current limitation. Correct-wrong pairs tend to be further apart than
@@ -280,12 +274,7 @@ explicit physical state estimates. They should therefore be interpreted as
 diagnostic representation signals rather than direct measurements of physical
 law violation.
 
-The next step is to strengthen the qualitative analysis. Patch-level feature
-change maps and attention overlays can show whether the encoder response is
-located on the moving pendulum components. If the largest feature changes occur
-around the bob, rod, or pivot during wrong-physics interventions, that would
-make the trajectory metrics more interpretable. If the maps focus on unrelated
-regions, the scalar metrics would be less physically meaningful.
+\input{generated/simulated_pendulum/project_plan_alignment}
 
 \section{Conclusion}
 This project developed and tested an evaluation pipeline for studying physical

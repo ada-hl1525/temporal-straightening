@@ -1,0 +1,58 @@
+\begin{table}[t]
+\centering
+\caption{Wrong-minus-correct changes on the controlled simulated pendulum benchmark. Positive step-distance deltas indicate that wrong-physics videos produce larger frame-to-frame movement in latent space.}
+\label{tab:sim-encoder-deltas}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Encoder & $\Delta$ straight. & $\Delta$ curv. & $\Delta$ std step & $\Delta$ mean step \\
+\midrule
+CLIP-B/32 & +0.011 & -0.008 & +0.385 & +0.628 \\
+CLIP-L/14 & +0.011 & -0.006 & +0.227 & +0.815 \\
+DINOv2-B & -0.008 & -0.039 & +2.042 & +3.616 \\
+DINOv2-L & +0.005 & -0.043 & +1.400 & +3.111 \\
+DINOv2-S & -0.004 & -0.044 & +2.078 & +3.319 \\
+MAE-B & -0.003 & -0.025 & -0.034 & -0.062 \\
+SigLIP-B & -0.004 & -0.061 & +0.330 & +0.538 \\
+Swin-B & -0.009 & +0.017 & +0.522 & +1.229 \\
+ViT-B & -0.010 & -0.032 & +0.476 & +0.446 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Encoder-wise AUC when treating larger metric values as more likely to indicate wrong physics. Step-distance metrics are more reliable than straightness or curvature.}
+\label{tab:sim-auc}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Encoder & straight. & mean curv. & std step & mean step \\
+\midrule
+CLIP-B/32 & 0.781 & 0.516 & 0.766 & 0.844 \\
+CLIP-L/14 & 0.688 & 0.500 & 0.594 & 0.656 \\
+DINOv2-B & 0.359 & 0.422 & 0.719 & 0.781 \\
+DINOv2-L & 0.516 & 0.281 & 0.609 & 0.703 \\
+DINOv2-S & 0.312 & 0.406 & 0.719 & 0.781 \\
+MAE-B & 0.422 & 0.391 & 0.328 & 0.234 \\
+SigLIP-B & 0.422 & 0.297 & 0.781 & 0.703 \\
+Swin-B & 0.312 & 0.516 & 0.719 & 0.703 \\
+ViT-B & 0.344 & 0.422 & 0.750 & 0.766 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Scene-level wrong-minus-correct deltas pooled across encoders. Both single- and double-pendulum wrong videos increase latent step-distance metrics.}
+\label{tab:sim-scene-deltas}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Scene & $\Delta$ straight. & $\Delta$ curv. & $\Delta$ std step & $\Delta$ mean step \\
+\midrule
+Double pendulum & -0.006 & +0.018 & +0.724 & +1.300 \\
+Single pendulum & +0.004 & -0.071 & +0.926 & +1.731 \\
+\bottomrule
+\end{tabular}
+\end{table}

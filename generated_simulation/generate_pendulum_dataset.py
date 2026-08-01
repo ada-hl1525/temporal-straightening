@@ -12,7 +12,7 @@ Cloud usage:
 
 The output is written to:
 
-    generated_videos/pybullet_pendulum/
+    generated_videos/simulated_pendulum/
 
 It contains MP4 videos plus metadata.csv. The videos can be passed directly to
 the existing generated_eval batch scripts.
@@ -32,7 +32,7 @@ import imageio.v2 as imageio
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "generated_videos" / "pybullet_pendulum"
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "generated_videos" / "simulated_pendulum"
 
 
 @dataclass(frozen=True)
@@ -96,6 +96,12 @@ def simulate_single_pendulum(
                     current_gravity = -gravity * 0.65
                 elif wrong_type == "single_periodic_kick" and frame % max(1, fps) == 0:
                     omega += 0.9 * np.sign(theta if theta != 0 else 1.0)
+                elif wrong_type == "single_overdamped_after_half" and frame > frame_count // 2:
+                    current_damping = 1.25
+                elif wrong_type == "single_zero_gravity_after_half" and frame > frame_count // 2:
+                    current_gravity = 0.0
+                elif wrong_type == "single_impulse_at_midpoint" and frame == frame_count // 2:
+                    omega += 2.2 * np.sign(theta if theta != 0 else 1.0)
 
             alpha = -(current_gravity / length) * math.sin(theta) - current_damping * omega
             omega += alpha * dt
@@ -146,6 +152,13 @@ def simulate_double_pendulum(
                     current_gravity = -gravity * 0.55
                 elif wrong_type == "double_joint_kick" and frame % max(1, fps // 2) == 0:
                     omega2 += 0.7 * np.sign(math.sin(theta2 - theta1) or 1.0)
+                elif wrong_type == "double_overdamped_after_half" and frame > frame_count // 2:
+                    current_damping = 0.65
+                elif wrong_type == "double_zero_gravity_after_half" and frame > frame_count // 2:
+                    current_gravity = 0.0
+                elif wrong_type == "double_impulse_at_midpoint" and frame == frame_count // 2:
+                    omega1 += 1.3 * np.sign(theta1 if theta1 != 0 else 1.0)
+                    omega2 -= 1.3 * np.sign(theta2 if theta2 != 0 else 1.0)
 
             delta = theta1 - theta2
             den = 2 * m1 + m2 - m2 * math.cos(2 * delta)
@@ -277,13 +290,17 @@ def video_specs(num_variants: int) -> list[VideoSpec]:
         "single_energy_gain",
         "single_reverse_gravity_after_half",
         "single_periodic_kick",
-        "single_energy_gain",
+        "single_overdamped_after_half",
+        "single_zero_gravity_after_half",
+        "single_impulse_at_midpoint",
     ]
     double_wrong_types = [
         "double_energy_gain",
         "double_reverse_gravity_after_half",
         "double_joint_kick",
-        "double_energy_gain",
+        "double_overdamped_after_half",
+        "double_zero_gravity_after_half",
+        "double_impulse_at_midpoint",
     ]
     for scene, wrong_types, seed_base in [
         ("single_pendulum", single_wrong_types, 1100),
@@ -416,7 +433,9 @@ def write_readme(output_dir: Path) -> None:
                 "Labels:",
                 "",
                 "- `correct`: normal gravity and light damping.",
-                "- `wrong`: manually injected physical inconsistency such as energy gain, reversed gravity, or velocity kicks.",
+                "- `wrong`: manually injected physical inconsistency such as energy gain, reversed gravity, zero gravity, overdamping, or velocity kicks.",
+                "",
+                "For a larger report-ready dataset, run with `--num_variants 12`.",
                 "",
                 "The `metadata.csv` file stores scene labels, wrong-physics type, seed, and video paths.",
                 "",

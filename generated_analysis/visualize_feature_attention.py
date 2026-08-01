@@ -12,6 +12,7 @@ on sampled frames and writes:
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 
@@ -125,7 +126,7 @@ def run_model(frames: list[np.ndarray], model_name: str, device_arg: str):
     processor = AutoImageProcessor.from_pretrained(model_name)
     try:
         model = AutoModel.from_pretrained(model_name, attn_implementation="eager")
-    except TypeError:
+    except Exception:
         model = AutoModel.from_pretrained(model_name)
     model.to(device)
     model.eval()
@@ -174,7 +175,8 @@ def main() -> None:
     for index, frame in enumerate(frames):
         save_rgb(frame_dir / f"frame_{index:02d}.png", frame)
 
-    for index, heatmap in enumerate(feature_change_maps(hidden), start=1):
+    feature_maps = feature_change_maps(hidden)
+    for index, heatmap in enumerate(feature_maps, start=1):
         overlay = overlay_heatmap(frames[index], heatmap)
         save_rgb(feature_dir / f"feature_change_to_frame_{index:02d}.png", overlay)
 
@@ -182,6 +184,18 @@ def main() -> None:
     for index, heatmap in enumerate(attn_maps):
         overlay = overlay_heatmap(frames[index], heatmap)
         save_rgb(attention_dir / f"attention_frame_{index:02d}.png", overlay)
+
+    summary = {
+        "video_path": str(args.video_path),
+        "model_name": args.model_name,
+        "num_frames": args.num_frames,
+        "size": args.size,
+        "hidden_shape": list(hidden.shape),
+        "attention_shape": None if attention is None else list(attention.shape),
+        "num_feature_change_maps": len(feature_maps),
+        "num_attention_maps": len(attn_maps),
+    }
+    (args.output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print(f"Video: {args.video_path}")
     print(f"Model: {args.model_name}")
